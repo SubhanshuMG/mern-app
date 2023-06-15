@@ -1,0 +1,41 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "{{ .Values.config.name }}.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "{{ .Values.config.name }}.name" . }}
+    helm.sh/chart: {{ include "{{ .Values.config.name }}.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    acme.cert-manager.io/http01-edit-in-place: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.issuer | lower | quote }}
+spec:
+  tls:
+    - hosts:
+        - {{ .Values.ingress.tls.host.domain | lower | quote }}
+        - {{ .Values.ingress.tls.host.subdomain | lower | quote }}
+      secretName: {{ .Values.certificate.secretName | lower | quote }}
+  ingressClassName: "nginx"
+  rules:
+    - host: {{ .Values.ingress.tls.host.domain | lower | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "{{ .Values.config.name }}.fullname" . }}
+                port:
+                  name: http
+    - host: {{ .Values.ingress.tls.host.subdomain | lower | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "{{ .Values.config.name }}.fullname" . }}
+                port:
+                  name: http

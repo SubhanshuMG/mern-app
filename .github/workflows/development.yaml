@@ -1,0 +1,157 @@
+name: CI
+on:
+  push:
+    branches:
+      - development
+      - stage
+env:
+  GH_ACCESS: ${{ secrets.GH_TOKEN }}
+  FIREBASE_API_KEY_DEV: ${{ secrets.FIREBASE_API_KEY_DEV }}
+  FIREBASE_AUTH_DOMAIN_DEV: ${{ secrets.FIREBASE_AUTH_DOMAIN_DEV }}
+  FIREBASE_DATABASE_URL_DEV: ${{ secrets.FIREBASE_DATABASE_URL_DEV }}
+  FIREBASE_PROJECT_ID_DEV: ${{ secrets.FIREBASE_PROJECT_ID_DEV }}
+  FIREBASE_STORAGE_BUCKET_DEV: ${{ secrets.FIREBASE_STORAGE_BUCKET_DEV }}
+  FIREBASE_MESSAGING_SENDER_ID_DEV: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_DEV }}
+  FIREBASE_APP_ID_DEV: ${{ secrets.FIREBASE_APP_ID_DEV }}
+  FIREBASE_MEASUREMENT_ID_DEV: ${{ secrets.FIREBASE_MEASUREMENT_ID_DEV }}
+  FIREBASE_CERT_DEV: ${{ secrets.FIREBASE_CERT_DEV }}
+  GRAPHCMS_KEY_DEV: ${{ secrets.GRAPHCMS_KEY_DEV }}
+  GRAPHCMS_TOKEN_DEV: ${{ secrets.GRAPHCMS_TOKEN_DEV }}
+  GMT_ID_DEV: ${{ secrets.GMT_ID_DEV }}
+  CONTENT_API_DEV: ${{ secrets.CONTENT_API_DEV }}
+  CONTENT_API_URL_DEV: ${{ secrets.CONTENT_API_URL_DEV }}
+  TSEKOS_URL_DEV: ${{ secrets.TSEKOS_URL_DEV }}
+  STRIPE_PUBLISHABLE_KEY_DEV: ${{ secrets.STRIPE_PUBLISHABLE_KEY_DEV }}
+  PAYWALL_URL: ${{ secrets.PAYWALL_URL_DEV }}
+  JOBS_URL: ${{ secrets.JOBS_URL_DEV }}
+  MASTERCLASS_URL: ${{ secrets.MASTERCLASS_URL_DEV }}
+jobs:
+  Develop_branch:
+    if: ${{ github.ref == 'refs/heads/development' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@main
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v0.7.3
+        with:
+          credentials_json: ${{ secrets.GCP_SA }}
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          service_account_key: ${{ secrets.GCP_SA }}
+          project_id: ${{ secrets.RUN_PROJECT }}
+      - name: adding .env files
+        run: |
+          touch .env
+          echo FIREBASE_API_KEY=${{ env.FIREBASE_API_KEY_DEV }} >> .env
+          echo FIREBASE_AUTH_DOMAIN=${{ env.FIREBASE_AUTH_DOMAIN_DEV }} >> .env
+          echo FIREBASE_DATABASE_URL=${{ env.FIREBASE_DATABASE_URL_DEV }} >> .env
+          echo FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID_DEV }} >> .env
+          echo FIREBASE_STORAGE_BUCKET=${{ env.FIREBASE_STORAGE_BUCKET_DEV }} >> .env
+          echo FIREBASE_MESSAGING_SENDER_ID=${{ env.FIREBASE_MESSAGING_SENDER_ID_DEV }} >> .env
+          echo FIREBASE_APP_ID=${{ env.FIREBASE_APP_ID_DEV }} >> .env
+          echo FIREBASE_MEASUREMENT_ID=${{ env.FIREBASE_MEASUREMENT_ID_DEV }} >> .env
+          echo FIREBASE_CERT=${{ env.FIREBASE_CERT_DEV }} >> .env
+          echo GRAPHCMS_KEY=${{ env.GRAPHCMS_KEY_DEV }} >> .env
+          echo GRAPHCMS_TOKEN=${{ env.GRAPHCMS_TOKEN_DEV }} >> .env
+          echo GMT_ID=${{ env.GMT_ID_DEV }} >> .env
+          echo CONTENT_API=${{ env.CONTENT_API_DEV }} >> .env
+          echo CONTENT_API_URL=${{ env.CONTENT_API_URL_DEV }} >> .env
+          echo TSEKOS_URL_DEV=${{ env.TSEKOS_URL_DEV }} >> .env
+          echo STRIPE_PUBLISHABLE_KEY=${{ env.STRIPE_PUBLISHABLE_KEY_DEV }} >> .env
+          echo TSEKOS_URL=http://tsekos:80 >> .env
+          echo PAYWALL_URL=http://wall:80 >> .env
+          echo JOBS_URL=http://jobsboard:80 >> .env
+      - name: Building docker image
+        run: docker build . -t gcr.io/kimo-prod/mern-app:${{ github.run_number }}
+      #Building Docker image and taging it so it can be pushed to GCP Container Registry
+      - name: Gcloud init
+        run: gcloud components install gke-gcloud-auth-plugin
+      - name: Login to CR
+        run: gcloud auth configure-docker gcr.io
+      #Login to GCP Container Registry
+      - name: Pushing docker image to CR
+        run: docker push gcr.io/kimo-prod/mern-app:${{ github.run_number }}
+      #Push Docker image to CR on GCP
+      - name: Replace tokens
+        uses: cschleiden/replace-tokens@v1.1
+        with:
+          tokenPrefix: '#{'
+          tokenSuffix: '}#'
+          files: '["**/HELM/mern-app/values.yaml"]'
+        env:
+          TAG_NUMBER: "${{ github.run_number }}"
+          CLUSTER_ENV: "app.beta"
+          INGRESS_ISSUER: "letsencrypt-staging"
+          DEV: ".dev."
+        #Replace token to edit values for image tag
+      - name: Login to k8s
+        run: gcloud container clusters get-credentials kimo-test-cluster --region europe-west4 --project kimo-prod
+      - name: Deploy to k8s cluster
+        run: helm upgrade mern-app-beta ./HELM/mern-app --install --namespace dev-kimo
+  Stage_branch:
+    if: ${{ github.ref == 'refs/heads/stage' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@main
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v0.7.3
+        with:
+          credentials_json: ${{ secrets.GCP_SA }}
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          service_account_key: ${{ secrets.GCP_SA }}
+          project_id: ${{ secrets.RUN_PROJECT }}
+      - name: adding .env files
+        run: |
+          touch .env
+          echo FIREBASE_API_KEY=${{ env.FIREBASE_API_KEY_DEV }} >> .env
+          echo FIREBASE_AUTH_DOMAIN=${{ env.FIREBASE_AUTH_DOMAIN_DEV }} >> .env
+          echo FIREBASE_DATABASE_URL=${{ env.FIREBASE_DATABASE_URL_DEV }} >> .env
+          echo FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID_DEV }} >> .env
+          echo FIREBASE_STORAGE_BUCKET=${{ env.FIREBASE_STORAGE_BUCKET_DEV }} >> .env
+          echo FIREBASE_MESSAGING_SENDER_ID=${{ env.FIREBASE_MESSAGING_SENDER_ID_DEV }} >> .env
+          echo FIREBASE_APP_ID=${{ env.FIREBASE_APP_ID_DEV }} >> .env
+          echo FIREBASE_MEASUREMENT_ID=${{ env.FIREBASE_MEASUREMENT_ID_DEV }} >> .env
+          echo FIREBASE_CERT=${{ env.FIREBASE_CERT_DEV }} >> .env
+          echo GRAPHCMS_KEY=${{ env.GRAPHCMS_KEY_DEV }} >> .env
+          echo GRAPHCMS_TOKEN=${{ env.GRAPHCMS_TOKEN_DEV }} >> .env
+          echo GMT_ID=${{ env.GMT_ID_DEV }} >> .env
+          echo CONTENT_API=${{ env.CONTENT_API_DEV }} >> .env
+          echo CONTENT_API_URL=${{ env.CONTENT_API_URL_DEV }} >> .env
+          echo STRIPE_PUBLISHABLE_KEY=${{ env.STRIPE_PUBLISHABLE_KEY_DEV }} >> .env
+          echo TSEKOS_URL=http://tsekos:80 >> .env
+          echo PAYWALL_URL=http://wall:80 >> .env
+      - name: Building docker image
+        run: docker build . -t gcr.io/kimo-prod/mern-app:${{ github.run_number }}
+      - name: Gcloud init
+        run: gcloud components install gke-gcloud-auth-plugin
+      #Building Docker image and taging it so it can be pushed to GCP Container Registry
+      - name: Login to CR
+        run: gcloud auth configure-docker gcr.io
+      #Login to GCP Container Registry
+      - name: Pushing docker image to CR
+        run: docker push gcr.io/kimo-prod/mern-app:${{ github.run_number }}
+      #Push Docker image to CR on GCP
+      - name: Replace tokens
+        uses: cschleiden/replace-tokens@v1.1
+        with:
+          tokenPrefix: '#{'
+          tokenSuffix: '}#'
+          files: '["**/HELM/mern-app/values.yaml"]'
+        env:
+          TAG_NUMBER: "${{ github.run_number }}"
+          CLUSTER_ENV: ".dev"
+          INGRESS_ISSUER: "letsencrypt-staging"
+          NAME_ENV: ""
+          # DEV: ".dev."
+        #Replace token to edit values for image tag
+      - name: Login to k8s
+        run: gcloud container clusters get-credentials kimo-test-cluster --region europe-west4 --project kimo-prod
+      - name: Deploy to k8s cluster
+        run: helm upgrade mern-app-stage ./HELM/mern-app --install --namespace dev-kimo

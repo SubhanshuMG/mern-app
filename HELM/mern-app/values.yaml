@@ -1,0 +1,28 @@
+# Default values for mern-app.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: "gcr.io/kimo-prod"
+  pullPolicy: IfNotPresent
+  tag: "#{TAG_NUMBER}#"
+
+ingress:
+  tls:
+    host: "mern-app#{CLUSTER_ENV}#.kimo.ai"
+  issuer: "#{INGRESS_ISSUER}#"
+
+environment:
+
+certificate:
+  enabled: "true"
+  name: "mern-app#{NAME_ENV}#-tls"
+  commonName: "mern-app.#{CLUSTER_ENV}#.kimo.ai"
+  secretName: "mern-app#{NAME_ENV}#-tls"
+  dnsNames:
+  - mern-app#{CLUSTER_ENV}#.kimo.ai
+
+config:
+  name: "mern-app#{NAME_ENV}#"

@@ -1,0 +1,87 @@
+name: CI
+on:
+  push:
+    branches:
+      - new-prod
+env:
+  GH_ACCESS: ${{ secrets.GH_TOKEN }}
+  FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_PROD }}
+  FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_PROD }}
+  FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL_PROD }}
+  FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_PROD }}
+  FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_PROD }}
+  FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_PROD }}
+  FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_PROD }}
+  FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID_PROD }}
+  FIREBASE_CERT: ${{ secrets.FIREBASE_CERT_PROD }}
+  GRAPHCMS_KEY: ${{ secrets.GRAPHCMS_KEY_PROD }}
+  GRAPHCMS_TOKEN: ${{ secrets.GRAPHCMS_TOKEN_PROD }}
+  GMT_ID: ${{ secrets.GMT_ID_PROD }}
+  ADD_APPLICATION_SCHEMA: ${{ secrets.ADD_APPLICATION_SCHEMA_PROD }}
+  STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY_PROD }}
+  EVENTS_API: ${{ secrets.EVENTS_API_PROD }}
+jobs:
+  Main_branch:
+    if: ${{ github.ref == 'refs/heads/new-prod' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@main
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: google-github-actions/auth@v0.7.3
+        with:
+          credentials_json: ${{ secrets.GCP_SA }}
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          service_account_key: ${{ secrets.GCP_SA }}
+          project_id: ${{ secrets.RUN_PROJECT }}
+      - name: adding .env files
+        run: |
+          touch .env
+          echo FIREBASE_API_KEY=${{ env.FIREBASE_API_KEY }} >> .env
+          echo FIREBASE_AUTH_DOMAIN=${{ env.FIREBASE_AUTH_DOMAIN }} >> .env
+          echo FIREBASE_DATABASE_URL=${{ env.FIREBASE_DATABASE_URL }} >> .env
+          echo FIREBASE_PROJECT_ID=${{ env.FIREBASE_PROJECT_ID }} >> .env
+          echo FIREBASE_STORAGE_BUCKET=${{ env.FIREBASE_STORAGE_BUCKET }} >> .env
+          echo FIREBASE_MESSAGING_SENDER_ID=${{ env.FIREBASE_MESSAGING_SENDER_ID }} >> .env
+          echo FIREBASE_APP_ID=${{ env.FIREBASE_APP_ID }} >> .env
+          echo FIREBASE_MEASUREMENT_ID=${{ env.FIREBASE_MEASUREMENT_ID }} >> .env
+          echo FIREBASE_CERT=${{ env.FIREBASE_CERT }} >> .env
+          echo GRAPHCMS_KEY=${{ env.GRAPHCMS_KEY }} >> .env
+          echo GRAPHCMS_TOKEN=${{ env.GRAPHCMS_TOKEN }} >> .env
+          echo GMT_ID=${{ env.GMT_ID }} >> .env
+          echo CONTENT_API=${{ env.CONTENT_API }} >> .env
+          echo CONTENT_API_URL=${{ env.CONTENT_API_URL }} >> .env
+          echo STRIPE_PUBLISHABLE_KEY=${{ env.STRIPE_PUBLISHABLE_KEY }} >> .env
+          echo TSEKOS_URL='http://tsekos' >> .env
+          echo PAYWALL_URL='http://wall' >> .env
+          echo JOBS_URL='http://jobsboard' >> .env
+      - name: Building docker image
+        run: docker build . -t gcr.io/kimo-prod/app-web:${{ github.run_number }}
+      - name: Gcloud init
+        run: gcloud components install gke-gcloud-auth-plugin
+      #Building Docker image and taging it so it can be pushed to GCP Container Registry
+      - name: Login to CR
+        run: gcloud auth configure-docker gcr.io
+      #Login to GCP Container Registry
+      - name: Pushing docker image to CR
+        run: docker push gcr.io/kimo-prod/app-web:${{ github.run_number }}
+      #Push Docker image to CR on GCP
+      - name: Replace tokens
+        uses: cschleiden/replace-tokens@v1.1
+        with:
+          tokenPrefix: '#{'
+          tokenSuffix: '}#'
+          files: '["**/HELM/app-web/values.yaml"]'
+        env:
+          TAG_NUMBER: '${{ github.run_number }}'
+          CLUSTER_ENV: ""
+          INGRESS_ISSUER: "letsencrypt"
+          DEV: ""
+        #Replace token to edit values for image tag
+      - name: Login to k8s 
+        run: gcloud container clusters get-credentials kimo-prod-cluster-asia --zone asia-south1-a --project kimo-prod
+      - name: Deploy to k8s cluster
+        run: helm upgrade app-web ./HELM/app-web --install --namespace kimo-prod
